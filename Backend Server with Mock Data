@@ -1,0 +1,151 @@
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List
+
+# --- Application Setup ---
+app = FastAPI(
+    title="AI Code Debate API",
+    description="API for managing and serving AI code debate experiments.",
+    version="0.1.0",
+)
+
+# --- CORS Middleware ---
+# This allows the React frontend (running on a different port) to communicate with the backend.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, restrict this to your frontend's domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# --- Mock Database ---
+# In a real application, this data would come from a database.
+# For this prototype, we'll hardcode one experiment.
+MOCK_DB = {
+    "exp_1": {
+        "problem_id": "prob_001",
+        "problem_title": "Find the First Palindromic String in the Array",
+        "problem_description": """
+Given an array of strings `words`, return *the first palindromic string in the array*. If there is no such string, return an empty string `""`.
+
+A string is **palindromic** if it reads the same forward and backward.
+
+**Example 1:**
+- **Input:** `words = ["abc","car","ada","racecar","cool"]`
+- **Output:** `"ada"`
+- **Explanation:** The first palindromic string is "ada". "racecar" is also a palindromic string, but it is not the first.
+
+**Example 2:**
+- **Input:** `words = ["notapalindrome","racecar"]`
+- **Output:** `"racecar"`
+
+**Example 3:**
+- **Input:** `words = ["def","ghi"]`
+- **Output:** `""`
+""",
+        "solution_a": {
+            "id": "sol_a_001",
+            "code": """
+def first_palindrome(words: list[str]) -> str:
+    \"\"\"
+    Iterates through the list and checks each word.
+    Uses string slicing for the palindrome check.
+    \"\"\"
+    for word in words:
+        if word == word[::-1]:
+            return word
+    return ""
+""",
+        },
+        "solution_b": {
+            "id": "sol_b_001",
+            "code": """
+def is_palindrome(s: str) -> bool:
+    \"\"\"Helper function to check for palindrome.\"\"\"
+    left, right = 0, len(s) - 1
+    while left < right:
+        if s[left] != s[right]:
+            return False
+        left += 1
+        right -= 1
+    return True
+
+def first_palindrome(words: list[str]) -> str:
+    \"\"\"
+    Uses a helper function for clarity.
+    \"\"\"
+    for word in words:
+        if is_palindrome(word):
+            return word
+    return ""
+""",
+        },
+        "debate": [
+            {
+                "author": "Agent B (Critiquing A)",
+                "turn": 1,
+                "text": "Solution A is concise and Pythonic, which is a significant advantage. The use of `word == word[::-1]` is the standard, most readable way to check for a palindrome in Python. It's efficient for the constraints of typical competitive programming problems. My main critique is minor: by not using a helper function, the logic is slightly less modular, but for a simple check like this, it's perfectly acceptable and likely faster due to avoiding a function call overhead in a loop."
+            },
+            {
+                "author": "Agent A (Critiquing B)",
+                "turn": 2,
+                "text": "Solution B is well-structured and demonstrates a good understanding of fundamental algorithms by implementing the two-pointer check manually. This approach is more language-agnostic and might be slightly more memory-efficient as it doesn't create a reversed copy of the string. However, for Python, it's unnecessarily verbose. The `[::-1]` slice is heavily optimized C code under the hood and is almost always preferred for its clarity and performance. The added complexity of a helper function here doesn't justify the tradeoff in readability."
+            },
+            {
+                "author": "Agent A (Rebuttal)",
+                "turn": 3,
+                "text": "I agree with Agent B's critique. My solution prioritizes conciseness and readability within the context of the Python language. It is indeed less modular, but for this specific problem, the direct check is sufficient and idiomatic."
+            },
+            {
+                "author": "Agent B (Rebuttal)",
+                "turn": 4,
+                "text": "I concede Agent A's point. While my two-pointer implementation is a valid general algorithm, the slicing method in Solution A is superior in this specific context (Python). It is the better solution because it leverages the language's strengths for a cleaner and more direct implementation."
+            }
+        ]
+    }
+}
+
+
+# --- Pydantic Models (for Request/Response validation) ---
+class JudgeSubmission(BaseModel):
+    experiment_id: str
+    problem_id: str
+    chosen_solution_id: str
+    confidence_score: int
+    decision_time_ms: int
+
+
+# --- API Endpoints ---
+@app.get("/api/experiments/{experiment_id}")
+async def get_experiment(experiment_id: str):
+    """
+    Retrieves the full data for a given experiment,
+    including the problem, solutions, and debate transcript.
+    """
+    if experiment_id not in MOCK_DB:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    return MOCK_DB[experiment_id]
+
+
+@app.post("/api/judge")
+async def submit_judgment(submission: JudgeSubmission):
+    """
+    Receives a judgment from a human participant.
+    In a real app, this would save the data to a database.
+    """
+    print("--- Received Judgment ---")
+    print(f"  Experiment: {submission.experiment_id}")
+    print(f"  Problem: {submission.problem_id}")
+    print(f"  Choice: {submission.chosen_solution_id}")
+    print(f"  Confidence: {submission.confidence_score}/5")
+    print(f"  Time (ms): {submission.decision_time_ms}")
+    print("------------------------")
+    return {"status": "success", "message": "Judgment recorded."}
+
+# --- Main entry point for running the server ---
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
